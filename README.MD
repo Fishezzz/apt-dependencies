@@ -1,10 +1,12 @@
 # APT Dependencies
 
+Print a list of installed packages that depend on a given package.
+
 ### Usage
 
-`./dependencies.sh [OPTIONS] [--] <package>`
+`apt-dependencies [OPTIONS] [--] <package>`
 
-Print a list of installed packages that depend on a given package.
+You might need to add the folder containing this script in your `PATH` variable or place it in a folder like `~/.local/bin/`, `/usr/local/bin` or `/usr/bin`. It could also be that you need to give it execution permission (`chmod +x /path/to/apt-dependencies`).
 
 ### Options
 * `-h`, `--help`
