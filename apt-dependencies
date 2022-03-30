@@ -1,0 +1,114 @@
+#!/bin/bash
+
+#
+# author: Fishezzz
+# https://github.com/Fishezzz/apt-dependencies
+#
+
+prog_name="apt-dependencies"
+
+usage() {
+cat << _USAGE
+Usage: $prog_name [OPTIONS] [--] <package>
+
+Print a list of installed packages that depend on a given package.
+
+Options:
+    -h, --help
+        display this help and exit
+
+    --    everything after this will be treated as a list of packages.
+
+Arguments:
+    The <package> argument will be treated as a single package. Valid regexp can
+    be used as well but should be between quotes. When multiple packages are
+    provided without using "--" only the last package will be used.
+
+    When "--" is provided, multiple packages or regexps can be provided, when
+    seperated by spaces and quoted when needed. This will override any package
+    provided before the "--".
+
+    When multiple packages are provided, packages that depend on ANY of the
+    provided packages will be returned.
+    Dependencies can occur multiple times when providing multiple packages.
+
+_USAGE
+}
+
+declare -a packages
+
+# parse options and arguments
+while (( $# > 0 )) ; do
+    param="$1"
+    shift
+
+    case "$param" in
+        -h)
+            ;&
+        --help)
+            usage
+            exit 0
+            ;;
+        --)
+            packages=("$@")
+            break
+            ;;
+        *)
+            packages=("$param")
+            ;;
+    esac
+done
+
+# check if any packages are provided
+(( "${#packages[@]}" == 0 )) && { echo -e "No package provided!\nTry '$prog_name --help' for more information." >&2; exit 1; }
+
+# prepare regexp
+# check if we have 1 package/regexp or multiple
+if (( "${#packages[@]}" == 1 )); then
+    # single package/regexp provided, so no extra parentheses needed
+    regexp="$regexp${packages[0]}"
+else
+    # multiple packages/regexps provided
+    for p in "${packages[@]}"; do
+        if [[ -n "$regexp" ]]; then
+            regexp="$regexp|"
+        fi
+        regexp="$regexp($p)"
+    done
+fi
+
+# get all installed packages, outputs format: <package name>/<APT repository> <version> <platform> [<status>]
+# split on '/' to get the package name only, dunno why tail is needed
+declare -a array
+array=( $(apt list --installed 2> /dev/null | awk -F '/' '{ print $1 }' | tail -n +2) )
+
+# convert to associative array
+declare -A installed
+for key in "${array[@]}"; do
+    installed["$key"]="$key"
+done
+
+# make tempfile and trap signals to ensure it gets deleted
+temp=$(mktemp 'XXXXXX')
+trap "rm $temp; exit 2" SIGINT SIGTERM
+
+# get the dependencies for all installed packages and write them to the temp file
+apt depends $packages 2> /dev/null | xargs -l1 >> $temp
+
+current_pkg=""
+found_at_least_one=0
+# loop over all installed packages and check their dependencies
+while IFS=": " read first line; do
+    if [[ -n "$first" && -n "${installed[$first]}" ]]; then
+        # package
+        current_pkg="$first"
+    else
+        # dependency of the current package
+        # performs a regexp search for the provided packages and print if there are matches
+        [[ "$line" =~ $regexp ]] && { echo "${line%% *}"; found_at_least_one=1; }
+    fi
+done < $temp # read from temp file containing the result of apt depends
+
+(( $found_at_least_one == 0 )) && echo "No dependencies found."
+
+rm $temp
