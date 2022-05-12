@@ -2,19 +2,19 @@
 
 #
 # MIT License
-# 
+#
 # Copyright (c) 2022 Fishezzz
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in all
 # copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -25,6 +25,7 @@
 #
 
 prog_name="apt-dependencies"
+version="v2.0"
 
 usage() {
 cat << _USAGE
@@ -35,6 +36,12 @@ Print a list of installed packages that depend on a given package.
 Options:
     -h, --help
         display this help and exit
+
+    -v, --verbose
+        be verbose and show more info
+
+    --version
+        get the current version of this program
 
     --    everything after this will be treated as a list of packages.
 
@@ -55,6 +62,8 @@ _USAGE
 }
 
 declare -a requested
+verbose=0
+debug=0
 
 # parse options and arguments
 while (( $# > 0 )) ; do
@@ -65,6 +74,11 @@ while (( $# > 0 )) ; do
         -h) ;&
         --help)
             usage; exit 0;;
+        -v) ;&
+        --verbose)
+            verbose=1;;
+        --version)
+            echo "$version"; exit 0;;
         --)
             requested=("$@"); break;;
         *)
@@ -75,6 +89,9 @@ done
 # check if any packages are provided
 (( "${#requested[@]}" == 0 )) && { echo -e "No package provided!\nTry '$prog_name --help' for more information." >&2; exit 1; }
 
+## VERBOSE
+(( $verbose == 1 )) && echo "Requested packages: ${requested[@]}"
+
 # prepare regexp
 regexp=""
 for p in "${requested[@]}"; do
@@ -82,21 +99,31 @@ for p in "${requested[@]}"; do
     regexp="$regexp( $p )"
 done
 
+## DEBUG
+(( $debug == 1 && $verbose == 1 )) && echo "Regexp: $regexp"
+
 # get all installed packages, outputs format: <package name>/<APT repository> <version> <platform> [<status>]
 # split on '/' to get the package name only, dunno why tail is needed
 declare -a installed
 installed=( $(apt list --installed 2> /dev/null | awk -F '/' '{ print $1 }' | tail -n +2) )
 
+## VERBOSE
+(( $verbose == 1 )) && echo "Number of packages installed: ${#installed[@]}"
 
 # make tempfile and trap signals to ensure it gets deleted
 temp=$(mktemp -p $HOME 'XXXXXX')
 trap "rm $temp; exit 2" SIGINT SIGTERM
 
+## DEBUG
+(( $debug == 1 && $verbose == 1 )) && echo "Temp file: $temp"
+
 # get the dependencies for all installed packages and write them to the temp file
-echo -e "\nGetting dependencies of all installed packages ..."
+## VERBOSE
+(( $verbose == 1 )) && echo -e "\nGetting dependencies of all installed packages ..."
 apt show ${installed[@]} 2> /dev/null > $temp
 
-echo -e "Checking dependencies ...\n"
+## VERBOSE
+(( $verbose == 1 )) && echo -e "Checking dependencies ...\n"
 
 declare -A found
 pkg=""
@@ -123,7 +150,8 @@ done < $temp # read from temp file containing the result of apt show
 if (( ${#found[@]} != 0 )); then
     echo "${!found[@]}" | xargs -n1 | sort
 else
-    echo "No dependencies found."
+    ## VERBOSE
+    (( $verbose == 1 )) && echo "No dependencies found."
 fi
 
 rm $temp
