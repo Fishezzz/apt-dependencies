@@ -54,7 +54,7 @@ Arguments:
 _USAGE
 }
 
-declare -a packages
+declare -a requested
 
 # parse options and arguments
 while (( $# > 0 )) ; do
@@ -62,72 +62,68 @@ while (( $# > 0 )) ; do
     shift
 
     case "$param" in
-        -h)
-            ;&
+        -h) ;&
         --help)
-            usage
-            exit 0
-            ;;
+            usage; exit 0;;
         --)
-            packages=("$@")
-            break
-            ;;
+            requested=("$@"); break;;
         *)
-            packages=("$param")
-            ;;
+            requested=("$param");;
     esac
 done
 
 # check if any packages are provided
-(( "${#packages[@]}" == 0 )) && { echo -e "No package provided!\nTry '$prog_name --help' for more information." >&2; exit 1; }
+(( "${#requested[@]}" == 0 )) && { echo -e "No package provided!\nTry '$prog_name --help' for more information." >&2; exit 1; }
 
 # prepare regexp
-# check if we have 1 package/regexp or multiple
-if (( "${#packages[@]}" == 1 )); then
-    # single package/regexp provided, so no extra parentheses needed
-    regexp="$regexp${packages[0]}"
-else
-    # multiple packages/regexps provided
-    for p in "${packages[@]}"; do
-        if [[ -n "$regexp" ]]; then
-            regexp="$regexp|"
-        fi
-        regexp="$regexp($p)"
-    done
-fi
+regexp=""
+for p in "${requested[@]}"; do
+    [[ -n "$regexp" ]] && regexp="$regexp|"
+    regexp="$regexp( $p )"
+done
 
 # get all installed packages, outputs format: <package name>/<APT repository> <version> <platform> [<status>]
 # split on '/' to get the package name only, dunno why tail is needed
-declare -a array
-array=( $(apt list --installed 2> /dev/null | awk -F '/' '{ print $1 }' | tail -n +2) )
+declare -a installed
+installed=( $(apt list --installed 2> /dev/null | awk -F '/' '{ print $1 }' | tail -n +2) )
 
-# convert to associative array
-declare -A installed
-for key in "${array[@]}"; do
-    installed["$key"]="$key"
-done
 
 # make tempfile and trap signals to ensure it gets deleted
-temp=$(mktemp 'XXXXXX')
+temp=$(mktemp -p $HOME 'XXXXXX')
 trap "rm $temp; exit 2" SIGINT SIGTERM
 
 # get the dependencies for all installed packages and write them to the temp file
-apt depends $packages 2> /dev/null | xargs -l1 >> $temp
+echo -e "\nGetting dependencies of all installed packages ..."
+apt show ${installed[@]} 2> /dev/null > $temp
 
-current_pkg=""
-found_at_least_one=0
+echo -e "Checking dependencies ...\n"
+
+declare -A found
+pkg=""
+
 # loop over all installed packages and check their dependencies
-while IFS=": " read first line; do
-    if [[ -n "$first" && -n "${installed[$first]}" ]]; then
+while IFS=$'\n' read line; do
+    if [[ -n "$line" && "${line:0:9}" == "Package: " ]]; then
         # package
-        current_pkg="$first"
-    else
-        # dependency of the current package
-        # performs a regexp search for the provided packages and print if there are matches
-        [[ "$line" =~ $regexp ]] && { echo "${line%% *}"; found_at_least_one=1; }
+        pkg="${line:9}"
+    elif [[ -n "$line" && "${line:0:9}" == "Depends: " && -n "$pkg" ]]; then
+        # dependencies
+        if [[ "${line:9}" =~ $regexp ]]; then
+            if [[ -z ${found["$pkg"]} ]]; then
+                found["$pkg"]=1
+            else
+                ((found["$pkg"]++))
+            fi
+        fi
+        pkg=""
     fi
-done < $temp # read from temp file containing the result of apt depends
+done < $temp # read from temp file containing the result of apt show
 
-(( $found_at_least_one == 0 )) && echo "No dependencies found."
+# print result
+if (( ${#found[@]} != 0 )); then
+    echo "${!found[@]}" | xargs -n1 | sort
+else
+    echo "No dependencies found."
+fi
 
 rm $temp
