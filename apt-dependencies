@@ -29,7 +29,7 @@ version="v2.0"
 
 usage() {
 cat << _USAGE
-Usage: $prog_name [OPTIONS] [--] <package>
+Usage: ${prog_name} [OPTIONS] [--] <package>
 
 Print a list of installed packages that depend on a given package.
 
@@ -70,7 +70,7 @@ while (( $# > 0 )) ; do
     param="$1"
     shift
 
-    case "$param" in
+    case "${param}" in
         -h) ;&
         --help)
             usage; exit 0;;
@@ -78,16 +78,16 @@ while (( $# > 0 )) ; do
         --verbose)
             verbose=1;;
         --version)
-            echo "$version"; exit 0;;
+            echo "${version}"; exit 0;;
         --)
             requested=("$@"); break;;
         *)
-            requested=("$param");;
+            requested=("${param}");;
     esac
 done
 
 # check if any packages are provided
-(( "${#requested[@]}" == 0 )) && { echo -e "No package provided!\nTry '$prog_name --help' for more information." >&2; exit 1; }
+(( "${#requested[@]}" == 0 )) && { echo -e "No package provided!\nTry '${prog_name} --help' for more information." >&2; exit 1; }
 
 ## VERBOSE
 (( $verbose == 1 )) && echo "Requested packages: ${requested[@]}"
@@ -95,12 +95,12 @@ done
 # prepare regexp
 regexp=""
 for p in "${requested[@]}"; do
-    [[ -n "$regexp" ]] && regexp="$regexp|"
-    regexp="$regexp( $p )"
+    [[ -n "${regexp}" ]] && regexp="${regexp}|"
+    regexp="${regexp}(${p})"
 done
 
 ## DEBUG
-(( $debug == 1 && $verbose == 1 )) && echo "Regexp: $regexp"
+(( $debug == 1 && $verbose == 1 )) && echo "Regexp: ${regexp}"
 
 # get all installed packages, outputs format: <package name>/<APT repository> <version> <platform> [<status>]
 # split on '/' to get the package name only, dunno why tail is needed
@@ -112,15 +112,15 @@ installed=( $(apt list --installed 2> /dev/null | awk -F '/' '{ print $1 }' | ta
 
 # make tempfile and trap signals to ensure it gets deleted
 temp=$(mktemp -p $HOME 'XXXXXX')
-trap "rm $temp; exit 2" SIGINT SIGTERM
+trap "rm ${temp}; exit 2" SIGINT SIGTERM
 
 ## DEBUG
-(( $debug == 1 && $verbose == 1 )) && echo "Temp file: $temp"
+(( $debug == 1 && $verbose == 1 )) && echo "Temp file: ${temp}"
 
 # get the dependencies for all installed packages and write them to the temp file
 ## VERBOSE
 (( $verbose == 1 )) && echo -e "\nGetting dependencies of all installed packages ..."
-apt show ${installed[@]} 2> /dev/null > $temp
+apt show "${installed[@]}" 2> /dev/null > $temp
 
 ## VERBOSE
 (( $verbose == 1 )) && echo -e "Checking dependencies ...\n"
@@ -130,16 +130,16 @@ pkg=""
 
 # loop over all installed packages and check their dependencies
 while IFS=$'\n' read line; do
-    if [[ -n "$line" && "${line:0:9}" == "Package: " ]]; then
+    if [[ -n "${line}" && "${line:0:9}" == "Package: " ]]; then
         # package
         pkg="${line:9}"
-    elif [[ -n "$line" && "${line:0:9}" == "Depends: " && -n "$pkg" ]]; then
+    elif [[ -n "${line}" && "${line:0:9}" == "Depends: " && -n "${pkg}" ]]; then
         # dependencies
         if [[ "${line:9}" =~ $regexp ]]; then
-            if [[ -z ${found["$pkg"]} ]]; then
-                found["$pkg"]=1
+            if [[ -z ${found["${pkg}"]} ]]; then
+                found["${pkg}"]=1
             else
-                ((found["$pkg"]++))
+                ((found["${pkg}"]++))
             fi
         fi
         pkg=""
